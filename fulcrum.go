@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"reflect"
 	"strings"
 
 	"github.com/Sirupsen/logrus"
@@ -56,6 +57,8 @@ type Endpoint struct {
 	Name        string
 	Type        string
 	Method      string
+	Offset      string
+	HasNext     bool
 	Handler     func(endpoint Endpoint, input string) error
 	Data        *strings.Reader
 	SprintfPath string
@@ -210,6 +213,11 @@ func ExecuteLeverRequest(endpoint Endpoint, v interface{}) error {
 	if err != nil {
 		return err
 	}
+
+	// Track next token for endpoint
+	rv := reflect.ValueOf(v).Elem()
+	endpoint.Offset = rv.FieldByName("Next").String()
+	endpoint.HasNext = rv.FieldByName("HasNext").Bool()
 	return nil
 }
 
