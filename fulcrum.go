@@ -176,6 +176,10 @@ func (endpoint *Endpoint) URLString() string {
 		q.Set(param.Field, param.Value)
 		u.RawQuery = q.Encode()
 	}
+
+	q := u.Query()
+	q.Set("offset", endpoint.Offset)
+	u.RawQuery = q.Encode()
 	return u.String()
 }
 
@@ -308,18 +312,12 @@ func DownloadInterviews(endpoint Endpoint, input string) error {
 // DownloadUsers downloads the json formatted list of all users
 // that are involved in giving interviews on lever
 func DownloadUsers(endpoint Endpoint, input string) error {
-	u := endpoint.URL()
 	for {
 		var users Users
 		ExecuteLeverRequest(endpoint, &users)
 		if !users.HasNext {
 			break
 		}
-
-		// Update the offset and grab the next list of users
-		q := u.Query()
-		q.Set("offset", users.Next)
-		u.RawQuery = q.Encode()
 
 		for _, user := range users.Data {
 			if err := enc.Encode(&user); err != nil {
@@ -332,7 +330,6 @@ func DownloadUsers(endpoint Endpoint, input string) error {
 
 // DownloadCandidates retrieve candidates from lever
 func DownloadCandidates(endpoint Endpoint, input string) error {
-	u := endpoint.URL()
 	for {
 		var candidates Candidates
 		err := ExecuteLeverRequest(endpoint, &candidates)
@@ -343,11 +340,6 @@ func DownloadCandidates(endpoint Endpoint, input string) error {
 		if !candidates.HasNext {
 			break
 		}
-
-		// Update the offset and grab the next list of users
-		q := u.Query()
-		q.Set("offset", candidates.Next)
-		u.RawQuery = q.Encode()
 
 		for _, candidate := range candidates.Data {
 			if err := enc.Encode(&candidate); err != nil {
