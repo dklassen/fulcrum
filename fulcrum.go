@@ -17,6 +17,7 @@ import (
 
 var (
 	client              = http.Client{}
+	enc                 = json.NewEncoder(os.Stdout)
 	apiToken            = ""
 	baseURI             = "api.lever.co/v1/"
 	registeredEndpoints = map[string]Endpoint{
@@ -226,7 +227,6 @@ func DownloadCandidateFeedback(endpoint Endpoint, input string) error {
 	defer f.Close()
 
 	r := csv.NewReader(f)
-	enc := json.NewEncoder(os.Stdout)
 	for {
 		record, err := r.Read()
 		if err == io.EOF {
@@ -271,7 +271,6 @@ func DownloadInterviews(endpoint Endpoint, input string) error {
 	defer f.Close()
 
 	r := csv.NewReader(f)
-	enc := json.NewEncoder(os.Stdout)
 	for {
 		record, err := r.Read()
 		if err == io.EOF {
@@ -314,8 +313,6 @@ func DownloadUsers(endpoint Endpoint, input string) error {
 		q.Set("offset", users.Next)
 		u.RawQuery = q.Encode()
 
-		enc := json.NewEncoder(os.Stdout)
-
 		for _, user := range users.Data {
 			if err := enc.Encode(&user); err != nil {
 				logrus.Error(err)
@@ -343,8 +340,6 @@ func DownloadCandidates(endpoint Endpoint, input string) error {
 		q := u.Query()
 		q.Set("offset", candidates.Next)
 		u.RawQuery = q.Encode()
-
-		enc := json.NewEncoder(os.Stdout)
 
 		for _, candidate := range candidates.Data {
 			if err := enc.Encode(&candidate); err != nil {
