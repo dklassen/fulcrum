@@ -50,6 +50,13 @@ var (
 			SprintfPath: "/candidates",
 			Description: "Download all candidates",
 		},
+		"downloadArchivedReasons": Endpoint{
+			Name:        "Download Archived Reasons",
+			Method:      "Get",
+			Handler:     DownloadArchivedReasons,
+			SprintfPath: "/archive_reasons",
+			Description: "Download archive reasons for a candidate",
+		},
 	}
 )
 
@@ -65,6 +72,17 @@ type Endpoint struct {
 	Description string
 	Arguments   []interface{} // TODO:: rename this sucker to something that reflects is used in the sprintf for things like candidate id's
 	QueryParams []QueryParam
+}
+
+type ArchiveReasons struct {
+	Data    []ArchiveReason `json:"data"`
+	Next    string          `json:"next"`
+	HasNext bool            `json:"hasNext"`
+}
+
+type ArchiveReason struct {
+	ID   string `json:"id"`
+	Text string `json:"text"`
 }
 
 type Candidates struct {
@@ -345,6 +363,20 @@ func DownloadCandidates(endpoint Endpoint, input string) error {
 			if err := enc.Encode(&candidate); err != nil {
 				logrus.Error(err)
 			}
+		}
+	}
+	return nil
+}
+
+func DownloadArchivedReasons(endpoint Endpoint, input string) error {
+	var reasons ArchiveReasons
+	if err := ExecuteLeverRequest(&endpoint, &reasons); err != nil {
+		return err
+	}
+
+	for _, reason := range reasons.Data {
+		if err := enc.Encode(&reason); err != nil {
+			logrus.Error(err)
 		}
 	}
 	return nil
