@@ -203,7 +203,7 @@ func (endpoint *Endpoint) URLString() string {
 
 // ExecuteLeverRequest against an endpoint and decode the json into the
 // passed in object
-func ExecuteLeverRequest(endpoint Endpoint, v interface{}) error {
+func ExecuteLeverRequest(endpoint *Endpoint, v interface{}) error {
 	req, err := http.NewRequest(endpoint.Method, endpoint.URLString(), nil)
 	if err != nil {
 		return err
@@ -271,7 +271,7 @@ func DownloadCandidateFeedback(endpoint Endpoint, input string) error {
 		endpoint.Arguments = []interface{}{record[0]}
 
 		var feedbacks Feedbacks
-		if err := ExecuteLeverRequest(endpoint, &feedbacks); err != nil {
+		if err := ExecuteLeverRequest(&endpoint, &feedbacks); err != nil {
 			return err
 		}
 
@@ -313,7 +313,7 @@ func DownloadInterviews(endpoint Endpoint, input string) error {
 		endpoint.Arguments = []interface{}{record[0]}
 
 		var interviews Interviews
-		err = ExecuteLeverRequest(endpoint, &interviews)
+		err = ExecuteLeverRequest(&endpoint, &interviews)
 		if err != nil {
 			return err
 		}
@@ -332,7 +332,7 @@ func DownloadInterviews(endpoint Endpoint, input string) error {
 func DownloadUsers(endpoint Endpoint, input string) error {
 	for {
 		var users Users
-		ExecuteLeverRequest(endpoint, &users)
+		ExecuteLeverRequest(&endpoint, &users)
 		if !users.HasNext {
 			break
 		}
@@ -350,12 +350,11 @@ func DownloadUsers(endpoint Endpoint, input string) error {
 func DownloadCandidates(endpoint Endpoint, input string) error {
 	for {
 		var candidates Candidates
-		err := ExecuteLeverRequest(endpoint, &candidates)
-		if err != nil {
+		if err := ExecuteLeverRequest(&endpoint, &candidates); err != nil {
 			return err
 		}
 
-		if !candidates.HasNext {
+		if !endpoint.HasNext {
 			break
 		}
 
