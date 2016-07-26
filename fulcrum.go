@@ -195,9 +195,12 @@ func (endpoint *Endpoint) URLString() string {
 		u.RawQuery = q.Encode()
 	}
 
-	q := u.Query()
-	q.Set("offset", endpoint.Offset)
-	u.RawQuery = q.Encode()
+	if offset != "" {
+		q := u.Query()
+		q.Set("offset", endpoint.Offset)
+		u.RawQuery = q.Encode()
+	}
+
 	return u.String()
 }
 
