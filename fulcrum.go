@@ -52,17 +52,24 @@ var (
 		},
 		"downloadArchivedReasons": Endpoint{
 			Name:        "Download Archived Reasons",
-			Method:      "Get",
+			Method:      "GET",
 			Handler:     DownloadArchivedReasons,
 			SprintfPath: "/archive_reasons",
 			Description: "Download archive reasons for a candidate",
+		},
+		"downloadPostings": Endpoint{
+			Name:        "Download Postings",
+			Method:      "GET",
+			Handler:     DownloadPostings,
+			SprintfPath: "/postings",
+			Description: "Download all job postings",
 		},
 	}
 )
 
 type Endpoint struct {
 	Name        string
-	Type        string
+	Type        interface{}
 	Method      string
 	Offset      string
 	HasNext     bool
@@ -72,6 +79,26 @@ type Endpoint struct {
 	Description string
 	Arguments   []interface{} // TODO:: rename this sucker to something that reflects is used in the sprintf for things like candidate id's
 	QueryParams []QueryParam
+}
+
+type Postings struct {
+	Data    []ArchiveReason `json:"data"`
+	Next    string          `json:"next"`
+	HasNext bool            `json:"hasNext"`
+}
+
+type Posting struct {
+	ID         string            `json:"id"`
+	Text       string            `json:"text"`
+	CreatedAt  int               `json:"createdAt"`
+	UpdatedAt  int               `json:updatedAt"`
+	User       string            `json:"user"`
+	Owner      string            `json:"Owner"`
+	Categories map[string]string `json:"categories"`
+	Content    map[string]string `json:"conttent:`
+	Tags       []string          `json:"tags"`
+	State      string            `json:"state"`
+	ReqCode    string            `json:"reqcode"`
 }
 
 type ArchiveReasons struct {
@@ -195,7 +222,7 @@ func (endpoint *Endpoint) URLString() string {
 		u.RawQuery = q.Encode()
 	}
 
-	if offset != "" {
+	if endpoint.Offset != "" {
 		q := u.Query()
 		q.Set("offset", endpoint.Offset)
 		u.RawQuery = q.Encode()
@@ -217,7 +244,7 @@ func ExecuteLeverRequest(endpoint *Endpoint, v interface{}) error {
 	if err != nil {
 		return err
 	}
-
+	logrus.Info(req)
 	if resp.StatusCode != 200 {
 		logrus.Error("Non 200 HTTP status response from ", endpoint.URLString())
 		logrus.Fatal(resp)
@@ -342,6 +369,26 @@ func DownloadUsers(endpoint Endpoint, input string) error {
 
 		for _, user := range users.Data {
 			if err := enc.Encode(&user); err != nil {
+				logrus.Error(err)
+			}
+		}
+	}
+	return nil
+}
+
+func DownloadPostings(endpoint Endpoint, input string) error {
+	for {
+		var postings Postings
+		if err := ExecuteLeverRequest(&endpoint, &postings); err != nil {
+			return err
+		}
+
+		if !endpoint.HasNext {
+			break
+		}
+
+		for _, candidate := range postings.Data {
+			if err := enc.Encode(&candidate); err != nil {
 				logrus.Error(err)
 			}
 		}
