@@ -244,7 +244,7 @@ func ExecuteLeverRequest(endpoint *Endpoint, v interface{}) error {
 	if err != nil {
 		return err
 	}
-	logrus.Info(req)
+
 	if resp.StatusCode != 200 {
 		logrus.Error("Non 200 HTTP status response from ", endpoint.URLString())
 		logrus.Fatal(resp)
