@@ -337,7 +337,9 @@ func DownloadUsingList(endpoint Endpoint, input string) error {
 			if err != nil {
 				return err
 			}
-			time.Sleep(100 * time.Millisecond)
+
+			// Cause we can't be downloading to fast
+			time.Sleep(1000 * time.Millisecond)
 
 			switch endpoint.Type {
 			case "interviews":
