@@ -12,6 +12,7 @@ import (
 	"path"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/Sirupsen/logrus"
 )
@@ -25,51 +26,65 @@ var (
 		"downloadUsers": Endpoint{
 			Name:        "Download Users",
 			Method:      "GET",
-			Handler:     DownloadUsers,
+			Type:        "users",
+			Handler:     Download,
 			SprintfPath: "/users",
 			Description: "Download all users from lever.",
 		},
 		"downloadInterviews": Endpoint{
 			Name:        "Download Interviews",
 			Method:      "GET",
-			Handler:     DownloadInterviews,
+			Handler:     DownloadUsingList,
+			Type:        "interviews",
 			SprintfPath: "/candidates/%s/interviews",
 			Description: "Download interviews for a candidates",
 		},
 		"downloadFeedback": Endpoint{
 			Name:        "Download Feedback",
 			Method:      "GET",
-			Handler:     DownloadCandidateFeedback,
+			Handler:     DownloadUsingList,
+			Type:        "feedback",
 			SprintfPath: "/candidates/%s/feedback",
 			Description: "Download feedback for a candidates",
 		},
 		"downloadCandidates": Endpoint{
 			Name:        "Download Candidates",
 			Method:      "GET",
-			Handler:     DownloadCandidates,
+			Type:        "candidates",
+			Handler:     Download,
 			SprintfPath: "/candidates",
 			Description: "Download all candidates",
 		},
 		"downloadArchivedReasons": Endpoint{
 			Name:        "Download Archived Reasons",
 			Method:      "GET",
-			Handler:     DownloadArchivedReasons,
+			Type:        "archivedReasons",
+			Handler:     Download,
 			SprintfPath: "/archive_reasons",
 			Description: "Download archive reasons for a candidate",
 		},
 		"downloadPostings": Endpoint{
 			Name:        "Download Postings",
+			Type:        "postings",
 			Method:      "GET",
-			Handler:     DownloadPostings,
+			Handler:     Download,
 			SprintfPath: "/postings",
 			Description: "Download all job postings",
+		},
+		"downloadApplications": Endpoint{
+			Name:        "Download Applications",
+			Type:        "applications",
+			Method:      "GET",
+			Handler:     DownloadUsingList,
+			SprintfPath: "/candidates/%s/applications",
+			Description: "Download all job applications for a candidate",
 		},
 	}
 )
 
 type Endpoint struct {
 	Name        string
-	Type        interface{}
+	Type        string
 	Method      string
 	Offset      string
 	HasNext     bool
@@ -81,28 +96,8 @@ type Endpoint struct {
 	QueryParams []QueryParam
 }
 
-type Postings struct {
-	Data    []ArchiveReason `json:"data"`
-	Next    string          `json:"next"`
-	HasNext bool            `json:"hasNext"`
-}
-
-type Posting struct {
-	ID         string            `json:"id"`
-	Text       string            `json:"text"`
-	CreatedAt  int               `json:"createdAt"`
-	UpdatedAt  int               `json:updatedAt"`
-	User       string            `json:"user"`
-	Owner      string            `json:"Owner"`
-	Categories map[string]string `json:"categories"`
-	Content    map[string]string `json:"conttent:`
-	Tags       []string          `json:"tags"`
-	State      string            `json:"state"`
-	ReqCode    string            `json:"reqcode"`
-}
-
-type ArchiveReasons struct {
-	Data    []ArchiveReason `json:"data"`
+type LeverData struct {
+	Data    json.RawMessage `json:"data"`
 	Next    string          `json:"next"`
 	HasNext bool            `json:"hasNext"`
 }
@@ -112,10 +107,14 @@ type ArchiveReason struct {
 	Text string `json:"text"`
 }
 
-type Candidates struct {
-	Data    []Candidate `json:"data"`
-	Next    string      `json:"next"`
-	HasNext bool        `json:"hasNext"`
+type Archived struct {
+	ArchivedAt     int    `json:"archivedAt"`
+	ArchivedReason string `json:"archivedReason"`
+}
+
+type QueryParam struct {
+	Field string
+	Value string
 }
 
 type Candidate struct {
@@ -123,13 +122,28 @@ type Candidate struct {
 	Name       string   `json:"name"`
 	CreatedAt  int      `json:"createdAt"`
 	ArchivedAt int      `json:"archivedAt"`
+	Archived   Archived `json:"archived"`
 	Tags       []string `json:"tags"`
 }
 
-type Users struct {
-	Data    []User `json:"data"`
-	Next    string `json:"next"`
-	HasNext bool   `json:"hasNext"`
+type Posting struct {
+	ID         string   `json:"id"`
+	Text       string   `json:"text"`
+	CreatedAt  int      `json:"createdAt"`
+	UpdatedAt  int      `json:updatedAt"`
+	User       string   `json:"user"`
+	Owner      string   `json:"Owner"`
+	Categories Category `json:"categories"`
+	Tags       []string `json:"tags"`
+	State      string   `json:"state"`
+	ReqCode    string   `json:"reqcode"`
+}
+
+type Category struct {
+	Location   string `json:"location"`
+	Commitment string `json:"commitment"`
+	Team       string `json:"team"`
+	Level      string `json:"level"`
 }
 
 // User in Lever include any team member that has been invited to join in on recruiting efforts.
@@ -142,12 +156,6 @@ type User struct {
 	Email      string `json:"username"`
 	CreatedAt  int    `json:"createdAt"`
 	AccessRole string `json:"accessRole"`
-}
-
-type Feedbacks struct {
-	Data    []Feedback `json:"data"`
-	Next    string     `json:"next"`
-	HasNext bool       `json:"hasNext"`
 }
 
 type Feedback struct {
@@ -171,10 +179,18 @@ type FormField struct {
 	Required    bool        `json:"required"`
 }
 
-type Interviews struct {
-	Data    []Interview `json:"data"`
-	Next    string      `json:"next"`
-	HasNext bool        `json:"hasNext"`
+type Application struct {
+	ID                   string   `json:"id"`
+	CreatedAt            int      `json:"createdAt"`
+	Type                 string   `json:"type"`
+	Posting              string   `json:"posting"`
+	PostingOwner         string   `json:"postingOwnner"`
+	PostingHiringManager string   `json:"postingHiringManager"`
+	User                 string   `json:"user"`
+	Name                 string   `json:"name"`
+	Email                string   `json:"email"`
+	Company              string   `json:"company"`
+	Archived             Archived `json:"archived"`
 }
 
 type Interview struct {
@@ -191,11 +207,6 @@ type Interview struct {
 	User             string   `json:"user"`
 	Stage            string   `json:"stage"`
 	CanceledAt       int      `json:"canceledAt"`
-}
-
-type QueryParam struct {
-	Field string
-	Value string
 }
 
 func (endpoint *Endpoint) PartialPath() string {
@@ -231,8 +242,32 @@ func (endpoint *Endpoint) URLString() string {
 	return u.String()
 }
 
-// ExecuteLeverRequest against an endpoint and decode the json into the
-// passed in object
+// LeverEndpointResult is the default response object returned
+// from a lever endpoint request.
+type LeverEndpointResult struct {
+	Data    *json.RawMessage `json:"data"`
+	HasNext bool             `json:"hasNext"`
+	Next    string           `json:"next"`
+}
+
+func Output(obj interface{}, encoder *json.Encoder) {
+	if err := encoder.Encode(&obj); err != nil {
+		logrus.Error(err)
+	}
+}
+
+func OutputList(v interface{}, encoder *json.Encoder) {
+	rv := reflect.ValueOf(v) //.FieldByName("Data")
+	if rv.IsNil() {
+		logrus.Panic("Lever JSON object must contain Data field")
+	}
+
+	for i := 0; i < rv.Len(); i++ {
+		entry := rv.Index(i).Interface()
+		Output(entry, enc)
+	}
+}
+
 func ExecuteLeverRequest(endpoint *Endpoint, v interface{}) error {
 	req, err := http.NewRequest(endpoint.Method, endpoint.URLString(), nil)
 	if err != nil {
@@ -273,53 +308,7 @@ func ExecuteLeverRequest(endpoint *Endpoint, v interface{}) error {
 	return nil
 }
 
-// DownloadCandidateFeedback reads a CSV of candidate id's and downloads any
-// and all feedback for the individual
-func DownloadCandidateFeedback(endpoint Endpoint, input string) error {
-	if input == "" {
-		logrus.Fatal("To download feedback we need a csv file with a list of candidate ids.")
-	}
-
-	f, err := os.Open(input)
-	if err != nil {
-		logrus.Fatal(err)
-	}
-	defer f.Close()
-
-	r := csv.NewReader(f)
-	for {
-		record, err := r.Read()
-		if err == io.EOF {
-			break
-		}
-
-		if err != nil {
-			logrus.Fatal(err)
-		}
-
-		// NOTE:: Sucks but we need to know that this endpoint requires specific arguments
-		endpoint.Arguments = []interface{}{record[0]}
-
-		var feedbacks Feedbacks
-		if err := ExecuteLeverRequest(&endpoint, &feedbacks); err != nil {
-			return err
-		}
-
-		for _, feedback := range feedbacks.Data {
-			if err := enc.Encode(&feedback); err != nil {
-				logrus.Error(err)
-			}
-		}
-	}
-	return nil
-}
-
-// DownloadInterviews reads candidate ids from a csv file and grabs the interviews
-// for that candidate
-// NOTE:: This is going to bite me in the ass. We are not going to try and download
-// all the interviews. Grap the first list and thats it. If someone has more than 50
-// interviews seriously will worry about it then
-func DownloadInterviews(endpoint Endpoint, input string) error {
+func DownloadUsingList(endpoint Endpoint, input string) error {
 	if input == "" {
 		logrus.Fatal("To download interviews we need a csv file with a list of candidate ids.")
 	}
@@ -342,91 +331,89 @@ func DownloadInterviews(endpoint Endpoint, input string) error {
 
 		endpoint.Arguments = []interface{}{record[0]}
 
-		var interviews Interviews
-		err = ExecuteLeverRequest(&endpoint, &interviews)
-		if err != nil {
-			return err
-		}
+		for {
+			var leverData LeverData
+			err = ExecuteLeverRequest(&endpoint, &leverData)
+			if err != nil {
+				return err
+			}
+			time.Sleep(100 * time.Millisecond)
 
-		for _, interview := range interviews.Data {
-			if err := enc.Encode(&interview); err != nil {
-				logrus.Error(err)
+			switch endpoint.Type {
+			case "interviews":
+				var interviews []Interview
+				if err := json.Unmarshal(leverData.Data, &interviews); err != nil {
+					logrus.Fatal(err)
+				}
+
+				OutputList(interviews, enc)
+			case "applications":
+				var applications []Application
+
+				if err := json.Unmarshal(leverData.Data, &applications); err != nil {
+					logrus.Fatal(err)
+				}
+
+				OutputList(applications, enc)
+			default:
+				logrus.Fatal("Unknown endpoint type: ", endpoint.Type)
+			}
+
+			if !endpoint.HasNext {
+				break
 			}
 		}
 	}
 	return nil
 }
 
-// DownloadUsers downloads the json formatted list of all users
-// that are involved in giving interviews on lever
-func DownloadUsers(endpoint Endpoint, input string) error {
+func Download(endpoint Endpoint, input string) error {
 	for {
-		var users Users
-		ExecuteLeverRequest(&endpoint, &users)
-		if !users.HasNext {
-			break
-		}
+		var leverData LeverData
 
-		for _, user := range users.Data {
-			if err := enc.Encode(&user); err != nil {
-				logrus.Error(err)
-			}
-		}
-	}
-	return nil
-}
-
-func DownloadPostings(endpoint Endpoint, input string) error {
-	for {
-		var postings Postings
-		if err := ExecuteLeverRequest(&endpoint, &postings); err != nil {
+		if err := ExecuteLeverRequest(&endpoint, &leverData); err != nil {
 			return err
+		}
+
+		switch endpoint.Type {
+		case "users":
+			var users []User
+
+			if err := json.Unmarshal(leverData.Data, &users); err != nil {
+				logrus.Fatal(err)
+			}
+
+			OutputList(users, enc)
+		case "archivedReasons":
+			var reasons []ArchiveReason
+			if err := json.Unmarshal(leverData.Data, &reasons); err != nil {
+				logrus.Fatal(err)
+			}
+
+			OutputList(reasons, enc)
+		case "postings":
+			var posting []Posting
+			if err := json.Unmarshal(leverData.Data, &posting); err != nil {
+				logrus.Fatal(err)
+			}
+
+			OutputList(posting, enc)
+		case "candidates":
+			var candidates []Candidate
+
+			if err := json.Unmarshal(leverData.Data, &candidates); err != nil {
+				logrus.Fatal(err)
+			}
+
+			OutputList(candidates, enc)
+		default:
+			logrus.Fatal("Unknown endpoint type", endpoint.Type)
 		}
 
 		if !endpoint.HasNext {
 			break
 		}
 
-		for _, candidate := range postings.Data {
-			if err := enc.Encode(&candidate); err != nil {
-				logrus.Error(err)
-			}
-		}
-	}
-	return nil
-}
-
-// DownloadCandidates retrieve candidates from lever
-func DownloadCandidates(endpoint Endpoint, input string) error {
-	for {
-		var candidates Candidates
-		if err := ExecuteLeverRequest(&endpoint, &candidates); err != nil {
-			return err
-		}
-
-		if !endpoint.HasNext {
-			break
-		}
-
-		for _, candidate := range candidates.Data {
-			if err := enc.Encode(&candidate); err != nil {
-				logrus.Error(err)
-			}
-		}
-	}
-	return nil
-}
-
-func DownloadArchivedReasons(endpoint Endpoint, input string) error {
-	var reasons ArchiveReasons
-	if err := ExecuteLeverRequest(&endpoint, &reasons); err != nil {
-		return err
-	}
-
-	for _, reason := range reasons.Data {
-		if err := enc.Encode(&reason); err != nil {
-			logrus.Error(err)
-		}
 	}
 	return nil
 }
