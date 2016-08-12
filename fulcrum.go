@@ -18,6 +18,7 @@ import (
 )
 
 var (
+	checkPointFilePath  = "/tmp/last_fulcrum_candidate"
 	client              = http.Client{}
 	enc                 = json.NewEncoder(os.Stdout)
 	apiToken            = ""
@@ -130,7 +131,7 @@ type Posting struct {
 	ID         string   `json:"id"`
 	Text       string   `json:"text"`
 	CreatedAt  int      `json:"createdAt"`
-	UpdatedAt  int      `json:updatedAt"`
+	UpdatedAt  int      `json:"updatedAt"`
 	User       string   `json:"user"`
 	Owner      string   `json:"Owner"`
 	Categories Category `json:"categories"`
@@ -308,6 +309,16 @@ func ExecuteLeverRequest(endpoint *Endpoint, v interface{}) error {
 	return nil
 }
 
+func LastProcessedID() string {
+	lastProcessedID := []byte("")
+
+	if lastProcessedID, err = ioutil.ReadFile(checkPointFilePath); err != nil {
+		logrus.Error(err)
+	}
+
+	return string(lastProcessedID)
+}
+
 func DownloadUsingList(endpoint Endpoint, input string) error {
 	if input == "" {
 		logrus.Fatal("To download interviews we need a csv file with a list of candidate ids.")
@@ -325,17 +336,32 @@ func DownloadUsingList(endpoint Endpoint, input string) error {
 
 	defer f.Close()
 
+	lastProcessedID := LastProcessedID()
+	checkPointed := false
+
 	r := csv.NewReader(f)
 	for {
 		record, err := r.Read()
+
 		if err == io.EOF {
 			break
 		}
+
 		if err != nil {
 			logrus.Fatal(err)
 		}
 
-		endpoint.Arguments = []interface{}{record[0]}
+		candidateID := record[0]
+
+		if strings.Compare(lastProcessedID, "") == 0 {
+			lastProcessedID = candidateID
+		}
+
+		if !checkPointed && strings.Compare(candidateID, lastProcessedID) != 0 {
+			continue
+		}
+
+		endpoint.Arguments = []interface{}{candidateID}
 
 		for {
 			var leverData LeverData
@@ -372,6 +398,13 @@ func DownloadUsingList(endpoint Endpoint, input string) error {
 				break
 			}
 		}
+
+		if err := ioutil.WriteFile(checkPointFilePath, []byte(candidateID), 0644); err != nil {
+			logrus.Fatal(err)
+		}
+
+		lastProcessedID = candidateID
+		checkPointed = true
 	}
 	return nil
 }
