@@ -317,6 +317,12 @@ func DownloadUsingList(endpoint Endpoint, input string) error {
 	if err != nil {
 		logrus.Fatal(err)
 	}
+
+	// Setup channel we can write to and rate limit the requests to the
+	// endpoint
+	rate := time.Second / 10
+	throttle := time.Tick(rate)
+
 	defer f.Close()
 
 	r := csv.NewReader(f)
@@ -333,13 +339,14 @@ func DownloadUsingList(endpoint Endpoint, input string) error {
 
 		for {
 			var leverData LeverData
+
+			// Respect the rate limit
+			<-throttle
+
 			err = ExecuteLeverRequest(&endpoint, &leverData)
 			if err != nil {
 				return err
 			}
-
-			// Cause we can't be downloading to fast
-			time.Sleep(1000 * time.Millisecond)
 
 			switch endpoint.Type {
 			case "interviews":
