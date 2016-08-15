@@ -88,7 +88,7 @@ type Endpoint struct {
 	Method      string
 	Offset      string
 	HasNext     bool
-	Handler     func(endpoint Endpoint, input string) error
+	Handler     func(endpoint Endpoint, input string, state *Checkpoint) error
 	Data        *strings.Reader
 	SprintfPath string
 	Description string
@@ -130,7 +130,7 @@ type Posting struct {
 	ID         string   `json:"id"`
 	Text       string   `json:"text"`
 	CreatedAt  int      `json:"createdAt"`
-	UpdatedAt  int      `json:updatedAt"`
+	UpdatedAt  int      `json:"updatedAt"`
 	User       string   `json:"user"`
 	Owner      string   `json:"Owner"`
 	Categories Category `json:"categories"`
@@ -308,7 +308,7 @@ func ExecuteLeverRequest(endpoint *Endpoint, v interface{}) error {
 	return nil
 }
 
-func DownloadUsingList(endpoint Endpoint, input string) error {
+func DownloadUsingList(endpoint Endpoint, input string, state *Checkpoint) error {
 	if input == "" {
 		logrus.Fatal("To download interviews we need a csv file with a list of candidate ids.")
 	}
@@ -328,14 +328,22 @@ func DownloadUsingList(endpoint Endpoint, input string) error {
 	r := csv.NewReader(f)
 	for {
 		record, err := r.Read()
+
 		if err == io.EOF {
 			break
 		}
+
 		if err != nil {
 			logrus.Fatal(err)
 		}
 
-		endpoint.Arguments = []interface{}{record[0]}
+		candidateID := record[0]
+
+		if checkReached := state.ReachedCheckpoint(candidateID); !checkReached {
+			continue
+		}
+
+		endpoint.Arguments = []interface{}{candidateID}
 
 		for {
 			var leverData LeverData
@@ -372,11 +380,14 @@ func DownloadUsingList(endpoint Endpoint, input string) error {
 				break
 			}
 		}
+
+		state.UpdateLastID(candidateID)
+		state.CheckPoint()
 	}
 	return nil
 }
 
-func Download(endpoint Endpoint, input string) error {
+func Download(endpoint Endpoint, input string, state *Checkpoint) error {
 	for {
 		var leverData LeverData
 
