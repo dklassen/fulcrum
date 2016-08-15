@@ -18,7 +18,6 @@ import (
 )
 
 var (
-	checkPointFilePath  = "/tmp/last_fulcrum_candidate"
 	client              = http.Client{}
 	enc                 = json.NewEncoder(os.Stdout)
 	apiToken            = ""
@@ -89,7 +88,7 @@ type Endpoint struct {
 	Method      string
 	Offset      string
 	HasNext     bool
-	Handler     func(endpoint Endpoint, input string) error
+	Handler     func(endpoint Endpoint, input string, state *Checkpoint) error
 	Data        *strings.Reader
 	SprintfPath string
 	Description string
@@ -309,17 +308,7 @@ func ExecuteLeverRequest(endpoint *Endpoint, v interface{}) error {
 	return nil
 }
 
-func LastProcessedID() string {
-	lastProcessedID := []byte("")
-
-	if lastProcessedID, err = ioutil.ReadFile(checkPointFilePath); err != nil {
-		logrus.Error(err)
-	}
-
-	return string(lastProcessedID)
-}
-
-func DownloadUsingList(endpoint Endpoint, input string) error {
+func DownloadUsingList(endpoint Endpoint, input string, state *Checkpoint) error {
 	if input == "" {
 		logrus.Fatal("To download interviews we need a csv file with a list of candidate ids.")
 	}
@@ -336,9 +325,6 @@ func DownloadUsingList(endpoint Endpoint, input string) error {
 
 	defer f.Close()
 
-	lastProcessedID := LastProcessedID()
-	checkPointed := false
-
 	r := csv.NewReader(f)
 	for {
 		record, err := r.Read()
@@ -353,11 +339,7 @@ func DownloadUsingList(endpoint Endpoint, input string) error {
 
 		candidateID := record[0]
 
-		if strings.Compare(lastProcessedID, "") == 0 {
-			lastProcessedID = candidateID
-		}
-
-		if !checkPointed && strings.Compare(candidateID, lastProcessedID) != 0 {
+		if checkReached := state.ReachedCheckpoint(candidateID); !checkReached {
 			continue
 		}
 
@@ -399,17 +381,13 @@ func DownloadUsingList(endpoint Endpoint, input string) error {
 			}
 		}
 
-		if err := ioutil.WriteFile(checkPointFilePath, []byte(candidateID), 0644); err != nil {
-			logrus.Fatal(err)
-		}
-
-		lastProcessedID = candidateID
-		checkPointed = true
+		state.UpdateLastID(candidateID)
+		state.CheckPoint()
 	}
 	return nil
 }
 
-func Download(endpoint Endpoint, input string) error {
+func Download(endpoint Endpoint, input string, state *Checkpoint) error {
 	for {
 		var leverData LeverData
 

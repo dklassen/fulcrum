@@ -83,7 +83,8 @@ func main() {
 	endpoint.QueryParams = queryParams
 
 	handler := endpoint.Handler
-	err := handler(endpoint, config.Input)
+	state := NewCheckpoint(endpoint.Type)
+	err := handler(endpoint, config.Input, state)
 	if err != nil {
 		logrus.Fatal(err)
 	}
