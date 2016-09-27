@@ -17,6 +17,7 @@ type Checkpoint struct {
 
 func NewCheckpoint(prefix string) *Checkpoint {
 	fp := fmt.Sprintf("/tmp/%s_candidate_id", prefix)
+	logrus.Info("creating new checkpoint file", fp)
 	return &Checkpoint{FilePath: fp, HasReachedCheckpoint: false}
 }
 
@@ -55,6 +56,7 @@ func (cp *Checkpoint) UpdateLastID(id string) {
 }
 
 func (cp *Checkpoint) CheckPoint() {
+	logrus.Info("Checkpointing ", cp.LastProcessedID())
 	if err := ioutil.WriteFile(cp.FilePath, []byte(cp.LastProcessedID()), 0644); err != nil {
 		logrus.Fatal(err)
 	}

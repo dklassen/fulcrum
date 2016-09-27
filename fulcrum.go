@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -18,7 +19,9 @@ import (
 )
 
 var (
-	client              = http.Client{}
+	client = http.Client{
+		Timeout: time.Duration(10 * time.Second),
+	}
 	enc                 = json.NewEncoder(os.Stdout)
 	apiToken            = ""
 	baseURI             = "api.lever.co/v1/"
@@ -39,6 +42,14 @@ var (
 			SprintfPath: "/candidates/%s/interviews",
 			Description: "Download interviews for a candidates",
 		},
+		"downloadReferrals": Endpoint{
+			Name:        "Download Referrals",
+			Method:      "GET",
+			Type:        "referrals",
+			Handler:     DownloadUsingList,
+			SprintfPath: "/candidates/%s/referrals",
+			Description: "Download the referrals for a candidate",
+		},
 		"downloadFeedback": Endpoint{
 			Name:        "Download Feedback",
 			Method:      "GET",
@@ -54,6 +65,14 @@ var (
 			Handler:     Download,
 			SprintfPath: "/candidates",
 			Description: "Download all candidates",
+		},
+		"downloadResumes": Endpoint{
+			Name:        "Download Resumes",
+			Method:      "GET",
+			Type:        "resumes",
+			Handler:     DownloadUsingList,
+			SprintfPath: "/candidates/%s/resumes",
+			Description: "Download resumes for each candidates specified",
 		},
 		"downloadArchivedReasons": Endpoint{
 			Name:        "Download Archived Reasons",
@@ -78,6 +97,14 @@ var (
 			Handler:     DownloadUsingList,
 			SprintfPath: "/candidates/%s/applications",
 			Description: "Download all job applications for a candidate",
+		},
+		"downloadStages": Endpoint{
+			Name:        "Download Stages",
+			Type:        "stages",
+			Method:      "GET",
+			Handler:     Download,
+			SprintfPath: "/stages",
+			Description: "Download all the stages that exist in the pipeline",
 		},
 	}
 )
@@ -117,13 +144,58 @@ type QueryParam struct {
 	Value string
 }
 
+type Stage struct {
+	ID   string `json:"id"`
+	Text string `json:"text"`
+}
+
+type StageChange struct {
+	ToStageID    string `json:"toStageId"`
+	ToStageIndex int    `json:"toStageIndex"`
+	UpdatedAt    int    `json:"updatedAt"`
+}
+
+type LeverResumeFile struct {
+	DownloadURL string `json:"downloadUrl"`
+	Ext         string `json:"ext"`
+	Name        string `json:"name"`
+	UploadedAt  int    `json:"updatedAt"`
+}
+
+type ParsedDataSection struct {
+	Positions *json.RawMessage `json:"positions"`
+	School    *json.RawMessage `json:"school"`
+}
+
+type Resume struct {
+	ID         string            `json:"id"`
+	CreatedAt  int               `json:"createdAt"`
+	File       LeverResumeFile   `json:"file"`
+	ParsedData ParsedDataSection `json:"parsedData"`
+}
+
 type Candidate struct {
-	ID         string   `json:"id"`
-	Name       string   `json:"name"`
-	CreatedAt  int      `json:"createdAt"`
-	ArchivedAt int      `json:"archivedAt"`
-	Archived   Archived `json:"archived"`
-	Tags       []string `json:"tags"`
+	ID             string        `json:"id"`
+	Name           string        `json:"name"`
+	Location       string        `json:"location"`
+	Emails         []string      `json:"emails"`
+	Origin         string        `json:"origin"`
+	Sources        []string      `json:"sources"`
+	Stage          string        `json:"stage"`
+	StageChanges   []StageChange `json:"stageChanges"`
+	CreatedAt      int           `json:"createdAt"`
+	ArchivedAt     int           `json:"archivedAt"`
+	LastAdvancedAt int           `json:"lastAdvancedAt"`
+	Archived       Archived      `json:"archived"`
+	Tags           []string      `json:"tags"`
+}
+
+type Referral struct {
+	ID           string `json:"id"`
+	Type         string `json:"type"`
+	Text         string `json:"text"`
+	Instructions string `json:"instructions"`
+	Referrer     string `json:"referrer"`
 }
 
 type Posting struct {
@@ -150,12 +222,13 @@ type Category struct {
 // There are five different access roles in Lever. From greatest access to least,
 // these roles are: Super Admin, Admin, Team Member, Team Member - Limited, and Interviewer.
 type User struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Username   string `json:"username"`
-	Email      string `json:"username"`
-	CreatedAt  int    `json:"createdAt"`
-	AccessRole string `json:"accessRole"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Username  string `json:"username"`
+	Email     string `json:"username"`
+	CreatedAt int    `json:"createdAt"`
+	//AccessRole string `json:"accessRole"`
+
 }
 
 type Feedback struct {
@@ -190,6 +263,7 @@ type Application struct {
 	Name                 string   `json:"name"`
 	Email                string   `json:"email"`
 	Company              string   `json:"company"`
+	Tags                 []string `json:"tags"`
 	Archived             Archived `json:"archived"`
 }
 
@@ -268,6 +342,8 @@ func OutputList(v interface{}, encoder *json.Encoder) {
 	}
 }
 
+var StatusNotFound = errors.New("404 what more do you want?")
+
 func ExecuteLeverRequest(endpoint *Endpoint, v interface{}) error {
 	req, err := http.NewRequest(endpoint.Method, endpoint.URLString(), nil)
 	if err != nil {
@@ -280,9 +356,11 @@ func ExecuteLeverRequest(endpoint *Endpoint, v interface{}) error {
 		return err
 	}
 
-	if resp.StatusCode != 200 {
-		logrus.Error("Non 200 HTTP status response from ", endpoint.URLString())
-		logrus.Fatal(resp)
+	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusNotFound {
+			return StatusNotFound
+		}
+		return fmt.Errorf("Recieved %d from %s", resp.StatusCode, endpoint.URLString())
 	}
 
 	if err != nil {
@@ -346,6 +424,8 @@ func DownloadUsingList(endpoint Endpoint, input string, state *Checkpoint) error
 		endpoint.Arguments = []interface{}{candidateID}
 
 		for {
+			logrus.Info(candidateID)
+
 			var leverData LeverData
 
 			// Respect the rate limit
@@ -353,6 +433,11 @@ func DownloadUsingList(endpoint Endpoint, input string, state *Checkpoint) error
 
 			err = ExecuteLeverRequest(&endpoint, &leverData)
 			if err != nil {
+				if err == StatusNotFound {
+					logrus.Error(err)
+					break
+				}
+
 				return err
 			}
 
@@ -372,6 +457,37 @@ func DownloadUsingList(endpoint Endpoint, input string, state *Checkpoint) error
 				}
 
 				OutputList(applications, enc)
+			case "feedback":
+				var feedback []Feedback
+
+				if err := json.Unmarshal(leverData.Data, &feedback); err != nil {
+					logrus.Fatal(err)
+				}
+
+				OutputList(feedback, enc)
+			case "stages":
+				var stages []Stage
+
+				if err := json.Unmarshal(leverData.Data, &stages); err != nil {
+					logrus.Fatal(err)
+				}
+
+				OutputList(stages, enc)
+			case "resumes":
+				var resumes []Resume
+				if err := json.Unmarshal(leverData.Data, &resumes); err != nil {
+					logrus.Fatal(err)
+				}
+
+				OutputList(resumes, enc)
+			case "referrals":
+
+				var referrals []Referral
+				if err := json.Unmarshal(leverData.Data, &referrals); err != nil {
+					logrus.Fatal(err)
+				}
+
+				OutputList(referrals, enc)
 			default:
 				logrus.Fatal("Unknown endpoint type: ", endpoint.Type)
 			}
@@ -426,6 +542,15 @@ func Download(endpoint Endpoint, input string, state *Checkpoint) error {
 			}
 
 			OutputList(candidates, enc)
+		case "stages":
+
+			var stages []Stage
+
+			if err := json.Unmarshal(leverData.Data, &stages); err != nil {
+				logrus.Fatal(err)
+			}
+
+			OutputList(stages, enc)
 		default:
 			logrus.Fatal("Unknown endpoint type", endpoint.Type)
 		}
